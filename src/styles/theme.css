@@ -1,0 +1,17 @@
+@theme {
+  --color-background: #090909;
+  --color-surface: #111111;
+  --color-card: #151515;
+  --color-border: #262626;
+
+  --color-gold: #D4AF37;
+  --color-gold-light: #E8C96A;
+
+  --color-success: #00E676;
+  --color-danger: #FF4D4F;
+
+  --color-text: #FFFFFF;
+  --color-text-secondary: #9CA3AF;
+
+  --shadow-gold: 0 0 50px rgba(212,175,55,.15);
+}
