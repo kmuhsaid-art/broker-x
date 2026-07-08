@@ -4,7 +4,7 @@ namespace App\Services\Investment;
 
 use App\Models\InvestmentOrder;
 use App\Models\InvestmentPayout;
-use App\Models\WalletTransaction;
+use App\Models\WalletLock;
 use App\Services\Wallet\WalletUnlockService;
 use App\Services\Wallet\WalletService;
 use Illuminate\Support\Facades\DB;
@@ -32,6 +32,11 @@ class InvestmentCompleteService
 
         return DB::transaction(function () use ($investment) {
 
+            $investment = InvestmentOrder::query()
+                ->with(['wallet', 'product'])
+                ->lockForUpdate()
+                ->findOrFail($investment->id);
+
             if ($investment->status !== 'ACTIVE') {
 
                 throw new \Exception(
@@ -42,21 +47,35 @@ class InvestmentCompleteService
 
             /*
             |--------------------------------------------------------------------------
-            | Release Principal
+            | Release Principal Lock
             |--------------------------------------------------------------------------
             */
 
+            $lock = WalletLock::query()
+
+                ->where('wallet_id', $investment->wallet_id)
+
+                ->where('reference_type', InvestmentOrder::class)
+
+                ->where('reference_id', $investment->id)
+
+                ->where('status', 'CAPTURED')
+
+                ->lockForUpdate()
+
+                ->first();
+
+            if (!$lock) {
+
+                throw new \RuntimeException(
+                    'Captured wallet lock not found.'
+                );
+
+            }
+
             $this->walletUnlock->unlock(
 
-                wallet: $investment->wallet,
-
-                amount: $investment->amount,
-
-                type: 'INVESTMENT_RELEASE',
-
-                referenceType: InvestmentOrder::class,
-
-                referenceId: $investment->id,
+                lock: $lock,
 
                 description: 'Investment principal released.',
 
@@ -104,7 +123,7 @@ class InvestmentCompleteService
 
                 'amount' => $investment->expected_profit,
 
-                'status' => 'PAID',
+                'status' => 'SUCCESS',
 
                 'method' => 'AUTO',
 
@@ -125,7 +144,6 @@ class InvestmentCompleteService
             */
 
             $investment->current_profit =
-
                 $investment->expected_profit;
 
             $investment->status = 'COMPLETED';
@@ -182,9 +200,7 @@ class InvestmentCompleteService
         ) {
 
             $completed = $this->complete(
-
                 $investment
-
             );
 
             $completed->admin_note = $note;
@@ -219,9 +235,7 @@ class InvestmentCompleteService
     ): InvestmentOrder {
 
         if (
-
             $investment->status === 'COMPLETED'
-
         ) {
 
             return $investment;
@@ -229,9 +243,7 @@ class InvestmentCompleteService
         }
 
         return $this->complete(
-
             $investment
-
         );
 
     }

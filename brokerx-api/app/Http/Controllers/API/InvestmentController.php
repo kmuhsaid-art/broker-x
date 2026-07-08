@@ -3,429 +3,111 @@
 namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
-use App\Models\InvestmentOrder;
 use App\Models\InvestmentProduct;
-use App\Models\Wallet;
 use App\Services\Investment\InvestmentService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 
 class InvestmentController extends Controller
 {
+    protected InvestmentService $investmentService;
+
     public function __construct(
-
-        private InvestmentService $investmentService
-
+        InvestmentService $investmentService
     ) {
+        $this->investmentService = $investmentService;
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Investment Products
-    |--------------------------------------------------------------------------
-    */
 
-    public function index()
+    /**
+     * List investment products
+     */
+    public function products()
     {
+        $products = InvestmentProduct::query()
+            ->where('status', true)
+            ->with('category')
+            ->get();
 
         return response()->json([
-
             'success' => true,
-
-            'data' => InvestmentProduct::with('category')
-
-                ->where('status', true)
-
-                ->orderByDesc('featured')
-
-                ->latest()
-
-                ->get()
-
+            'data' => $products
         ]);
-
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Product Detail
-    |--------------------------------------------------------------------------
-    */
 
-    public function show(
-        InvestmentProduct $product
-    ) {
-
-        return response()->json([
-
-            'success' => true,
-
-            'data' => $product->load('category')
-
-        ]);
-
-    }
-
-    /*
-    |--------------------------------------------------------------------------
-    | My Investments
-    |--------------------------------------------------------------------------
-    */
-
-    public function myInvestments(
-        Request $request
-    ) {
-
-        return response()->json([
-
-            'success' => true,
-
-            'data' => InvestmentOrder::with([
-
-                'product.category',
-
-                'wallet',
-
-                'logs',
-
-                'payouts'
-
-            ])
-
-            ->where(
-
-                'user_id',
-
-                $request->user()->id
-
-            )
-
-            ->latest()
-
-            ->get()
-
-        ]);
-
-    }
-
-    /*
-    |--------------------------------------------------------------------------
-    | Investment Detail
-    |--------------------------------------------------------------------------
-    */
-
-    public function detail(
-
-        InvestmentOrder $investment
-
-    ) {
-
-        if (
-
-            auth()->id() != $investment->user_id
-
-        ) {
-
-            abort(403);
-
-        }
-
-        return response()->json([
-
-            'success' => true,
-
-            'data' => $investment->load([
-
-                'product.category',
-
-                'wallet',
-
-                'logs',
-
-                'payouts'
-
-            ])
-
-        ]);
-
-    }
-
-    /*
-    |--------------------------------------------------------------------------
-    | Create Investment
-    |--------------------------------------------------------------------------
-    */
-
-    public function invest(
-
-        Request $request,
-
-        InvestmentProduct $product
-
-    ) {
-
+    /**
+     * Create investment order
+     */
+    public function store(Request $request)
+    {
         $request->validate([
-
-            'wallet_id' => [
-
+            'product_id' => [
                 'required',
-
-                'exists:wallets,id'
-
+                'exists:investment_products,id'
             ],
-
             'amount' => [
-
                 'required',
-
-                'numeric'
-
+                'numeric',
+                'min:1'
             ],
-
-            'user_note' => [
-
-                'nullable',
-
-                'string',
-
-                'max:1000'
-
-            ]
-
         ]);
 
-        $wallet = Wallet::where(
 
-            'id',
+        $user = Auth::user();
 
-            $request->wallet_id
 
-        )
+        $investment = $this->investmentService->createInvestment(
+            user: $user,
+            productId: $request->product_id,
+            amount: $request->amount
+        );
 
-        ->where(
-
-            'user_id',
-
-            auth()->id()
-
-        )
-
-        ->firstOrFail();
-
-        $investment =
-
-            $this->investmentService->create(
-
-                product: $product,
-
-                wallet: $wallet,
-
-                amount: $request->amount,
-
-                userNote: $request->user_note,
-
-                userId: auth()->id()
-
-            );
 
         return response()->json([
-
             'success' => true,
-
-            'message' =>
-
-                'Investment successfully created.',
-
-            'data' =>
-
-                $investment->load([
-
-                    'product.category',
-
-                    'wallet'
-
-                ])
-
-        ], 201);
-
-    }
-
-    /*
-    |--------------------------------------------------------------------------
-    | Cancel Investment
-    |--------------------------------------------------------------------------
-    */
-
-    public function cancel(
-
-        InvestmentOrder $investment
-
-    ) {
-
-        if (
-
-            auth()->id() !=
-
-            $investment->user_id
-
-        ) {
-
-            abort(403);
-
-        }
-
-        $investment =
-
-            $this->investmentService
-
-            ->cancel(
-
-                $investment
-
-            );
-
-        return response()->json([
-
-            'success' => true,
-
-            'message' =>
-
-                'Investment cancelled.',
-
+            'message' => 'Investment created successfully',
             'data' => $investment
-
-        ]);
-
+        ], 201);
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Active Investments
-    |--------------------------------------------------------------------------
-    */
 
-    public function active()
 
+    /**
+     * User investment portfolio
+     */
+    public function myInvestments()
     {
+        $user = Auth::user();
+
+
+        $investments = $this->investmentService
+            ->getUserInvestments($user);
+
 
         return response()->json([
-
             'success' => true,
-
-            'data' => InvestmentOrder::with(
-
-                'product'
-
-            )
-
-            ->where(
-
-                'user_id',
-
-                auth()->id()
-
-            )
-
-            ->where(
-
-                'status',
-
-                'ACTIVE'
-
-            )
-
-            ->latest()
-
-            ->get()
-
+            'data' => $investments
         ]);
-
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Completed Investments
-    |--------------------------------------------------------------------------
-    */
 
-    public function completed()
 
+    /**
+     * Investment detail
+     */
+    public function show($id)
     {
+        $investment = $this->investmentService
+            ->getInvestmentDetail(
+                Auth::user(),
+                $id
+            );
+
 
         return response()->json([
-
             'success' => true,
-
-            'data' => InvestmentOrder::with(
-
-                'product'
-
-            )
-
-            ->where(
-
-                'user_id',
-
-                auth()->id()
-
-            )
-
-            ->where(
-
-                'status',
-
-                'COMPLETED'
-
-            )
-
-            ->latest()
-
-            ->get()
-
+            'data' => $investment
         ]);
-
-    }
-
-    /*
-    |--------------------------------------------------------------------------
-    | Pending Investments
-    |--------------------------------------------------------------------------
-    */
-
-    public function pending()
-
-    {
-
-        return response()->json([
-
-            'success' => true,
-
-            'data' => InvestmentOrder::with(
-
-                'product'
-
-            )
-
-            ->where(
-
-                'user_id',
-
-                auth()->id()
-
-            )
-
-            ->where(
-
-                'status',
-
-                'PENDING'
-
-            )
-
-            ->latest()
-
-            ->get()
-
-        ]);
-
     }
 }

@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Models\InvestmentProduct;
 
 class InvestmentOrder extends Model
 {
@@ -109,4 +110,12 @@ class InvestmentOrder extends Model
 
         );
     }
+
+    public function transactions()
+    {
+        return $this->hasMany(
+            InvestmentTransaction::class
+        );
+    }
+
 }

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\WalletLock;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 
@@ -90,5 +91,10 @@ class Wallet extends Model
             'locked_balance',
             $amount
         );
+    }
+
+    public function locks()
+    {
+    return $this->hasMany(WalletLock::class);
     }
 }

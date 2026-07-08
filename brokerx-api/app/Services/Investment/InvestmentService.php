@@ -2,11 +2,17 @@
 
 namespace App\Services\Investment;
 
+use App\Models\InvestmentTransaction;
+use App\Services\Wallet\WalletService;
+use App\Services\Wallet\WalletTransactionService;
+use App\Services\Accounting\LedgerService;
+
 use App\Models\InvestmentOrder;
 use App\Models\InvestmentProduct;
 use App\Models\Wallet;
 use App\Services\Wallet\WalletLockService;
-use App\Services\Wallet\WalletService;
+
+use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Exception;
@@ -15,16 +21,20 @@ class InvestmentService
 {
     public function __construct(
 
-        private InvestmentCalculator $calculator,
+    private InvestmentCalculator $calculator,
 
-        private InvestmentLogService $logs,
+    private InvestmentLogService $logs,
 
-        private WalletLockService $walletLock,
+    private WalletService $walletService,
 
-        private WalletService $walletService
+    private WalletTransactionService $walletTransactionService,
 
-    ) {
-    }
+    private LedgerService $ledgerService,
+
+    private \App\Services\Wallet\WalletLockService $walletLock
+
+) {
+}
 
     /*
     |--------------------------------------------------------------------------
@@ -100,7 +110,7 @@ class InvestmentService
 
             }
 
-            $this->walletLock->lock(
+            $lock = $this->walletLock->lock(
 
                 wallet: $wallet,
 
@@ -110,7 +120,7 @@ class InvestmentService
 
                 referenceType: InvestmentOrder::class,
 
-                referenceId: null,
+                referenceId: $investment->id,
 
                 description: 'Investment Lock',
 
@@ -132,13 +142,13 @@ class InvestmentService
 
                 'expected_profit' =>
 
-                    $this->calculator->expectedProfit(
+            $this->calculator->expectedProfit(
 
-                        $product,
+                $product,
 
-                        $amount
+                $amount
 
-                    ),
+                ),
 
                 'current_profit' => 0,
 
@@ -147,6 +157,24 @@ class InvestmentService
                 'user_note' => $userNote
 
             ]);
+
+    InvestmentTransaction::create([
+
+        'investment_order_id' => $investment->id,
+
+        'user_id' => $userId,
+
+        'wallet_id' => $wallet->id,
+
+        'type' => 'INVESTMENT',
+
+        'amount' => $amount,
+
+        'status' => 'PENDING',
+
+        'description' => 'Investment order created',
+
+    ]);
 
             $this->logs->create(
 
